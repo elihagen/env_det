@@ -1,0 +1,46 @@
+# Training classes shared by both models (list index = train id). Everything else is ignored.
+classes: [ground, grass, crop, crop_row, person, animal, obstacle, tree, bush, sky, robot]
+ignore_index: 255
+
+# Recorder class name -> training class. Lidar labels are the ids in a recording's classes.json;
+# camera labels are strings like 'obstacle,prop_general,pail ...' (first token, else longest
+# contained name). Unlisted names (unlabelled, environment, UNLABELLED, BACKGROUND) are ignored.
+recorder_to_train:
+  ground: ground
+  grass: grass
+  crop: crop
+  crop_row: crop_row
+  person: person
+  animal: animal
+  obstacle: obstacle
+  tree: tree
+  bush: bush
+  sky: sky
+  robot_wheel: robot
+  robot_sensor: robot
+  robot_body: robot
+
+# Image export (RF-DETR): each object of these classes is its own instance; every other class
+# becomes one region per image (keeps the instance count below the model's query count).
+things: [person, animal, obstacle, tree, bush]
+
+lidar:
+  # SICK multiScan165: 16 fixed layers [deg], measured in the sensor frame of the recordings
+  # (the scanner is mounted upside down, hence the asymmetry).
+  layers_deg: [34.3, 29.1, 26.6, 24.0, 22.0, 19.1, 17.0, 14.3, 12.1, 9.6, 7.3, 5.1, 2.4, 0.0, -2.5, -7.2]
+  layer_tolerance_deg: 0.6
+  width: 1024  # range image columns over 360 deg, divisible by 16; 1024 = one pixel per point, 512 loses ~27%
+
+fusion:
+  # Recorder camera -> its mount link in the recording's robot_description.urdf (a USD camera:
+  # looks along -Z, +Y up). Scans are paired with the camera frame nearest in time.
+  cameras: {main: segmentation_camera_mount, surround: surround_camera_mount}
+  max_dt_ms: 30
+  # A point is hidden from the camera if a nearer point in the same cell x cell px block is closer by
+  # more than rel * depth + abs [m] (the camera sits elsewhere than the lidar).
+  occlusion_cell: 8
+  occlusion_tol: [0.05, 0.3]
+  # product: p ~ p_lidar^w_lidar * p_camera^w_camera; mean: weighted average. Weights are one
+  # number or one per class.
+  method: product
+  weights: {lidar: 1.0, camera: 1.0}

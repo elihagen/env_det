@@ -1,0 +1,9 @@
+.git
+.venv
+outputs
+datasets
+**/__pycache__
+*.pt
+*.pth
+.cache
+checkpoints

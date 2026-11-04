@@ -1,0 +1,9 @@
+# Install torch for your CUDA first (https://pytorch.org/get-started/locally/), then: pip install -r requirements.txt
+torch>=2.6  # transformers (via rfdetr) disables itself on older torch
+numpy
+pillow
+pyyaml
+tqdm
+opencv-python-headless
+rfdetr[train]==1.11.2
+supervision>=0.29

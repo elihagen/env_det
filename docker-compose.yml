@@ -1,0 +1,21 @@
+services:
+  seg:
+    build: .
+    image: lero_seg
+    # The code, outputs and datasets are mounted, so edits and results live on the host. The NAS is
+    # mounted at the same path: split.json and sources.json store absolute recording paths.
+    volumes:
+      - .:/workspace/lero_sim_segmentation
+      - /mnt/nas:/mnt/nas:ro
+    # Run as the host user so outputs aren't root-owned; caches (pretrained weights) stay in the repo.
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      HOME: /workspace/lero_sim_segmentation/.cache
+    ipc: host  # DataLoader workers share batches through /dev/shm
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
