@@ -32,6 +32,10 @@ docker compose run --rm seg python scripts/train_salsanext.py --data /mnt/nas/eh
 The repo is mounted into the container (edits and `outputs/` stay on the host) and `/mnt/nas` is
 mounted read-only at the same path, since `split.json`/`sources.json` hold absolute recording paths.
 
+VS Code (also over Remote-SSH): the Run and Debug panel has a configuration per script
+(`.vscode/launch.json`), incl. 1-epoch smoke tests. Each starts its script in the container under
+debugpy (`scripts/debug_listen.py`, port 5678 on localhost) and attaches to it.
+
 The GPU is shared with Isaac Sim on the datagen VM (it holds ~16 GB of the 24 GB): stop the
 `isaac_sim` container while training, or use small batches.
 
@@ -51,7 +55,13 @@ Used per recording: `points/`, `point_labels/`, `lidar_index.jsonl`, `classes.js
 ```bash
 python scripts/train_salsanext.py --data /path/to/runs --out outputs/salsanext
 python scripts/infer_salsanext.py --checkpoint outputs/salsanext/best.pt --split test
+python scripts/infer_salsanext.py --checkpoint outputs/salsanext/best.pt --recordings NEW_SCENE/recording \
+    --out outputs/salsanext/pred_new --ply
 ```
+
+Inference writes `preview/` images (range image and bird's-eye view, ground truth | prediction) and with
+`--ply` one point cloud per scan coloured by class (open in CloudCompare or MeshLab). Recordings without
+`point_labels/` are predicted and previewed but not scored.
 
 `--init checkpoints/salsanext_semantickitti/state_dict.pt` starts from the authors' SemanticKITTI
 model ([pretrained.zip](https://drive.google.com/file/d/1utfzooTDAlV5M6XGvCE0-L-vbdLe_2rD/view), MIT;
@@ -98,6 +108,92 @@ RF-DETR, and every lidar point gets one fused class:
 
 `metrics.json` scores lidar-only, camera-only and fused predictions per point, over all points and
 over the points a camera sees: compare them on the valid split to tune the weights.
+
+### Trained fusion head
+
+Instead of the fixed rule, a small fusion head can learn how to merge the two models, trained on the
+lidar points' semantic labels (SalsaNext and RF-DETR stay frozen):
+
+```bash
+python scripts/train_fusion.py --salsanext outputs/salsanext/best.pt --rfdetr outputs/rfdetr/<checkpoint>.pth --split valid
+python scripts/infer_fusion.py --salsanext outputs/salsanext/best.pt --rfdetr outputs/rfdetr/<checkpoint>.pth \
+    --head outputs/salsanext/fusion_head/best.pt --split test
+```
+
+- **Model** (`FusionHead`, `lero_seg/fusion.py`): per point, an MLP of 3 linear layers (`--layers`,
+  `--hidden` 64) over the log-probabilities and validity of the three sources (lidar, `main`,
+  `surround` camera; `--cameras`) plus the point's range and height. Its output is added to the
+  sources' summed log-probabilities, and its last layer starts at zero, so training starts from the
+  `product` rule and learns the correction (per-class trust, calibration, which sensor to believe when).
+- **Data**: both models run once over the split and their per-point outputs are cached in
+  `<out>/cache/` (reused while models and settings match), so the epochs take seconds. Train on scans
+  the models were not trained on (default: the `valid` split), else the head learns to trust their
+  overfitted outputs. The last 20% of each recording (`--holdout-frac`) picks the best epoch;
+  `history.json` compares its mIoU with the plain product's.
+- **Use**: `infer_fusion.py --head`, and `fusion_head:` in `configs/env_det.yaml` for the ROS node.
+
+## Viewing predictions in Foxglove / Lichtblick
+
+```bash
+python scripts/export_mcap.py --split test \
+    --pred lidar=outputs/salsanext/pred_test --pred fused=outputs/salsanext/fusion_test
+```
+
+This writes one `.mcap` per recording to `outputs/mcap/`; open it with *Open local file*. It
+doesn't need ROS, a running sim or a GPU. Per lidar stamp, with both lidars merged in `base_link`:
+
+| Topic | Content |
+|---|---|
+| `/gt`, `/lidar`, `/fused` | point clouds in class colours |
+| `/<name>/errors` | green = right, red = wrong, grey = no ground truth |
+| `/camera/main`, `.../gt`, `.../fused` | the camera frame used for fusion, raw and with the points painted by class |
+| `/legend` | the class colours |
+| `/tf` | `world → base_link` |
+
+`--pred NAME=DIR` takes any output folder of `infer_salsanext.py` or `infer_fusion.py`.
+
+## On the robot: ROS 2 node for the navigation stack
+
+`scripts/env_det_node.py` (ROS 2 Jazzy, config `configs/env_det.yaml`) segments every scan of the
+twin's lidars (`/sensors/right_lidar_cloud`, `/sensors/left_lidar_cloud`), each on its own as in
+training, with SalsaNext. With `rfdetr:` set, it fuses the cameras' frames nearest in time. The scan
+goes to `lero_seg/env_det.py`, which uses the same projection, normalisation and fusion as the
+scripts above. Robot poses come from TF: lidar → `fixed_frame` at the scan's stamp → camera at the
+frame's stamp. The node publishes with the scan's own header (stamp + lidar frame):
+
+| Topic | Content |
+|---|---|
+| `/perception/env_det/points` | every point: `x y z confidence instance label` (`lero_seg/ros_cloud.py`) |
+| `/perception/env_det/stop_points` | person, animal with confidence ≥ `min_confidence` |
+| `/perception/env_det/avoid_points` | obstacle, likewise |
+
+- `label` is the train id from `configs/classes.yaml`; 255 means no sensor saw the point.
+- `instance` is a per-scan object id: connected cells of a bird's-eye grid in `base_footprint`. Ids
+  are not yet tracked across scans.
+- Empty group clouds are published too, so the grid map can tell an object has gone.
+
+```bash
+docker compose build ros    # ROS 2 Jazzy + torch (Dockerfile.ros), not part of a plain `docker compose build`
+docker compose run --rm ros                                              # the node
+docker compose run --rm ros python scripts/fake_obstacle_pub.py --class person --x 4 --visible-sec 10
+```
+
+The container uses the same DDS setup as `lero_isaac_stack` (host network, `ROS_DOMAIN_ID` default
+0, FastDDS over UDPv4 only). `fake_obstacle_pub.py` publishes a person or obstacle with the node's
+cloud layout, for testing the navigation side without the model.
+
+**Grid map layer** (`ros/`):
+- `env_det_grid_mapper.launch.py` starts one `outdoor_navigation` `grid_mapper` per group cloud,
+  configured by `env_det_grid_mapper.yaml`. Each instance publishes on
+  `/perception/env_det/<group>_grid_map`.
+- Its `obstacle` layer is non-NaN where an object of the group's classes is, and the cell clears
+  `decay_time` (1 s) after the last detection.
+- It needs the `grid_mapper` package, e.g. in `lero_isaac_stack`'s devcontainer, where it is built.
+  That container doesn't mount this repo, so copy `ros/` into its workspace or mount it:
+  `ros2 launch <path>/ros/env_det_grid_mapper.launch.py`.
+- `mbf_tag_nav_gridmap_layer.yaml` is the same idea written as layers for an orchvine-style
+  `mbf-config.yaml`. It's a proposal for the nav stack and is unverified: that plugin's source
+  wasn't available.
 
 ## Notes
 

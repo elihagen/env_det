@@ -7,8 +7,8 @@ from .range_image import lidar_frames, load_scan, project
 
 
 class RangeImageDataset(Dataset):
-    def __init__(self, recordings, classes, lidar_cfg, stats=None, augment=False):
-        self.items = [item for rec in recordings for item in lidar_frames(rec)]
+    def __init__(self, recordings, classes, lidar_cfg, stats=None, augment=False, require_labels=True):
+        self.items = [item for rec in recordings for item in lidar_frames(rec, require_labels)]
         self.classes, self.cfg, self.augment = classes, lidar_cfg, augment
         self.stats = stats  # {'mean': [5], 'std': [5]}, set by compute_stats() for training
 

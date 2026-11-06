@@ -1,0 +1,25 @@
+# ROS 2 Jazzy runtime for the env_det node (scripts/env_det_node.py, scripts/fake_obstacle_pub.py).
+#   docker compose build ros
+#   docker compose run --rm ros python scripts/env_det_node.py --config configs/env_det.yaml
+# Separate from the training image (Dockerfile): ROS Jazzy needs Ubuntu 24.04's Python 3.12.
+FROM ros:jazzy-ros-base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3-venv python3-pip libglib2.0-0 \
+        ros-jazzy-rmw-fastrtps-cpp ros-jazzy-sensor-msgs-py ros-jazzy-tf2-ros-py \
+    && rm -rf /var/lib/apt/lists/*
+
+# A venv on top of the system site-packages: rclpy & co. stay importable, while pip never has to
+# replace an apt-installed package. Torch matches the training image (2.7.1, CUDA 12.6).
+RUN python3 -m venv --system-site-packages /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+RUN pip install --no-cache-dir torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
+WORKDIR /workspace/lero_sim_segmentation
+COPY requirements-ros.txt .
+# The constraint keeps pip from swapping torch for a CPU/other-CUDA build (as in Dockerfile).
+RUN printf 'torch==2.7.1\ntorchvision==0.22.1\n' > /tmp/torch-pin.txt \
+    && pip install --no-cache-dir -r requirements-ros.txt -c /tmp/torch-pin.txt
+
+COPY configs configs
+COPY lero_seg lero_seg
+COPY scripts scripts

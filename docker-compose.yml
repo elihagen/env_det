@@ -7,11 +7,42 @@ services:
     volumes:
       - .:/workspace/lero_sim_segmentation
       - /mnt/nas:/mnt/nas:ro
+      - /home/sysadmin/data:/home/sysadmin/data  # local copy of the recordings (the NAS is slow)
     # Run as the host user so outputs aren't root-owned; caches (pretrained weights) stay in the repo.
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       HOME: /workspace/lero_sim_segmentation/.cache
     ipc: host  # DataLoader workers share batches through /dev/shm
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ROS 2 Jazzy: the env_det node next to the Isaac Sim twin (Dockerfile.ros). Only built/run when
+  # named (profile): docker compose build ros; docker compose run --rm ros python scripts/env_det_node.py
+  ros:
+    profiles: [ros]
+    build:
+      context: .
+      dockerfile: Dockerfile.ros
+    image: lero_seg_ros
+    volumes:
+      - .:/workspace/lero_sim_segmentation
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      HOME: /workspace/lero_sim_segmentation/.cache
+      ROS_LOG_DIR: /tmp/ros_log
+      # Same DDS setup as lero_isaac_stack's devcontainer and isaac_sim: host network, FastDDS over
+      # UDP only (its shared-memory transport silently delivers nothing across these containers).
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+    network_mode: host
+    ipc: host
+    command: python scripts/env_det_node.py --config configs/env_det.yaml
     deploy:
       resources:
         reservations:

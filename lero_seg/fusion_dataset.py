@@ -59,7 +59,7 @@ class FusionDataset(Dataset):
             views.append({'camera': name, 'camera_dir': str(cam['dir']), 'frame': entry['frame'], 'uv': uv,
                           'visible': visible, 'rgb': np.array(Image.open(rgb_path(cam['dir'], entry)).convert('RGB'))})
         return {'range_image': torch.from_numpy(normalize(proj.image, proj.mask, self.lidar.stats)),
-                'row': proj.row, 'col': proj.col, 'labels': labels, 'views': views,
+                'row': proj.row, 'col': proj.col, 'points': points, 'labels': labels, 'views': views,
                 'recording': str(item['recording']), 'frame': item['frame']}
 
 

@@ -19,7 +19,7 @@ def main():
     parser.add_argument('--dataset', required=True)
     parser.add_argument('--out', required=True)
     parser.add_argument('--size', choices=SIZES, default='medium')
-    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--batch-size', default='auto', help="'auto' (CUDA only) or an integer")
     parser.add_argument('--grad-accum-steps', type=int, help='with an integer --batch-size, to reach a larger effective batch')
     parser.add_argument('--lr', type=float, default=1e-4)

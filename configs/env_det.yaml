@@ -1,0 +1,40 @@
+# scripts/env_det_node.py: environment detection on the LERO Isaac Sim twin (ROS 2 Jazzy).
+# Paths are relative to the repo root.
+
+salsanext: outputs/salsanext/best.pt
+rfdetr: null              # e.g. outputs/rfdetr/checkpoint_best_total.pth to fuse the cameras; null = lidar only
+rfdetr_size: medium
+rfdetr_threshold: 0.1     # low, as confidences are fused rather than cut
+fusion_head: null         # e.g. outputs/salsanext/fusion_head/best.pt (train_fusion.py); null = fixed rule from
+                          # classes.yaml 'fusion'. Its camera inputs are matched to `cameras` below by name.
+device: cuda
+use_sim_time: true
+
+# Each scan is segmented on its own, as in training (lidar_index.jsonl: one scan per lidar and stamp).
+lidar_topics: [/sensors/right_lidar_cloud, /sensors/left_lidar_cloud]
+
+# Cameras for fusion (only used with rfdetr). frame: the TF frame the image is taken in; usd_camera:
+# true for Isaac Sim's camera mounts (look along -Z, +Y up), false for a ROS optical frame (+Z, +Y down).
+# frame null = camera_info's header.frame_id.
+cameras:
+  main: {image: /segmentation_rgb, info: /segmentation_camera_info, frame: segmentation_camera_mount, usd_camera: true}
+  surround: {image: /surround_camera/rgb, info: /surround_camera/camera_info, frame: surround_camera_mount, usd_camera: true}
+# Scan and camera frame are taken at different times: points go lidar -> fixed_frame (at the scan) ->
+# camera (at the frame). Without that transform the newest one is used (no motion compensation).
+fixed_frame: odom
+max_dt_ms: 30             # skip a camera whose nearest frame is further from the scan
+
+namespace: /perception/env_det
+# <namespace>/points: every point with label, confidence, instance (unlabelled points keep label 255).
+publish_all_points: true
+# <namespace>/<name>: only points of these classes with confidence >= min_confidence, for the
+# navigation stack (one grid map layer each, see ros/).
+groups:
+  stop_points: [person, animal]
+  avoid_points: [obstacle]
+min_confidence: 0.5
+
+# Per-scan object ids for the group classes: connected cells of a bird's-eye grid in cluster_frame.
+cluster_frame: base_footprint
+cluster_cell: 0.3         # [m]
+cluster_min_points: 3

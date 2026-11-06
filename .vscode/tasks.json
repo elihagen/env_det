@@ -1,0 +1,215 @@
+// Started by the launch.json configurations; see there.
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "docker: Train SalsaNext (from SemanticKITTI)",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/train_salsanext.py --data ${input:data} --out outputs/salsanext --init checkpoints/salsanext_semantickitti/state_dict.pt --workers 0",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: Train SalsaNext (1 epoch smoke test)",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/train_salsanext.py --data ${input:data} --out outputs/salsanext_debug --init checkpoints/salsanext_semantickitti/state_dict.pt --epochs 1 --batch-size 2 --workers 0",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: Infer SalsaNext (test split)",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/infer_salsanext.py --checkpoint outputs/salsanext/best.pt --split test",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: Export COCO (SalsaNext's split)",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/export_coco.py --data ${input:data} --out datasets/coco_seg --split outputs/salsanext/split.json --every-n 1",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: Train RF-DETR-Seg",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/train_rfdetr.py --dataset datasets/coco_seg --out outputs/rfdetr --size medium",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: Train RF-DETR-Seg (1 epoch smoke test)",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/train_rfdetr.py --dataset datasets/coco_seg --out outputs/rfdetr_debug --size medium --epochs 1 --batch-size 2",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: Infer RF-DETR-Seg (test split)",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/infer_rfdetr.py --weights ${input:rfdetrWeights} --dataset datasets/coco_seg --split test",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: Late fusion (test split)",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/infer_fusion.py --salsanext outputs/salsanext/best.pt --rfdetr ${input:rfdetrWeights} --split test --workers 0",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: Train fusion head (valid split)",
+      "type": "shell",
+      "command": "docker rm -f lero_debug >/dev/null 2>&1; docker compose run --rm --name lero_debug -p 127.0.0.1:5678:5678 seg python -Xfrozen_modules=off scripts/debug_listen.py scripts/train_fusion.py --salsanext outputs/salsanext/best.pt --rfdetr ${input:rfdetrWeights} --split valid --workers 0",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "debugpy",
+        "pattern": {
+          "regexp": "^__never_matches__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": ".",
+          "endsPattern": "debugpy waiting for VS Code"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "docker: stop debug container",
+      "type": "shell",
+      "command": "docker rm -f lero_debug",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "data",
+      "type": "promptString",
+      "description": "Folder with the recordings (as seen in the container)",
+      "default": "/home/sysadmin/data/isaac/run_20261103_1407"
+    },
+    {
+      "id": "rfdetrWeights",
+      "type": "promptString",
+      "description": "RF-DETR-Seg checkpoint (see outputs/rfdetr/)",
+      "default": "outputs/rfdetr/checkpoint_best_total.pth"
+    }
+  ]
+}

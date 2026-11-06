@@ -7,3 +7,5 @@ tqdm
 opencv-python-headless
 rfdetr[train]==1.11.2
 supervision>=0.29
+mcap-protobuf-support  # scripts/export_mcap.py: .mcap files for Foxglove / Lichtblick
+foxglove-schemas-protobuf

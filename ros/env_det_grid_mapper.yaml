@@ -1,0 +1,36 @@
+# Grid map of what env_det detects: parameters for an extra instance of outdoor_navigation's
+# grid_mapper (outdoor_navigation/grid_mapper/src/grid_mapper_parameters.yaml), fed with one env_det
+# group cloud instead of the raw lidar (see env_det_grid_mapper.launch.py, which starts one instance
+# per group and sets pc_input.topic / map.topic).
+#
+# The cloud only holds points of the group's classes, so in its grid map:
+#   obstacle          (not NaN)  a cell holds such an object; value = its highest point (map frame z)
+#   obstacle_height              the object's height above the lowest point around it
+#   elevation / *_stamp          lowest point / last update (as in the lidar grid map)
+# Cells clear decay_time after the object was last seen. grid_mapper measures that against the stamp
+# of the newest cloud, not the clock: it relies on env_det publishing every scan, empty or not.
+/**:
+  ros__parameters:
+    map:
+      resolution: 0.2
+      size_x: 30.0
+      size_y: 30.0
+      center_frame: base_footprint
+      frame: map
+      decay_time: 1.0          # people move: forget a cell 1 s after the last detection in it
+      eraser_rate: 5.0         # [Hz] how often stale cells are cleared
+      publish_rate: 5.0
+      publish_center_points: true   # ~/cloud_obstacles, ~/cloud_elevation: cell centres for RViz
+      obstacle_height_radius: 1
+    pc_input:
+      # filter in pc_input.filter.frame, range filter in the cloud's own (lidar) frame
+      filter:
+        frame: base_footprint
+        x_min: -15.0
+        x_max: 15.0
+        y_min: -15.0
+        y_max: 15.0
+        z_min: -0.5
+        z_max: 2.5
+        range_min: 0.3         # grid_mapper's default (2.0 m) would drop everything near the robot
+        range_max: 30.0        # grid_mapper's default is 2.0 m as well

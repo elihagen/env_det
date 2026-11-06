@@ -1,0 +1,53 @@
+# NOT USED BY THIS REPO - a proposal for the nav stack's mbf-config.yaml (orchvine_nav_stack-style
+# mbf_tag_nav_gridmap), to discuss with the nav team. Unverified: the PointCloudLayer source was not
+# available; the keys mirror orchvine_nav_bringup/config/mbf-config.yaml's 'point_cloud' layer.
+#
+# One extra PointCloudLayer per env_det group cloud, next to the existing raw lidar layer:
+layers:
+  - 'point_cloud'
+  - 'obstacle_height'
+  - 'env_det_stop'       # person, animal: stop
+  - 'env_det_avoid'      # obstacle: drive around
+
+env_det_stop:
+  type: 'mbf_tag_nav_gridmap/PointCloudLayer'
+  input_topic: "/perception/env_det/stop_points"
+  decay_time: ${NR_ENV_DET_DECAY_TIME}   # e.g. 1.0: env_det publishes every scan, empty when nothing is seen
+  filter:
+    frame: "base_footprint"
+    x_min: ${NR_ENV_DET_FILTER_X_MIN}
+    x_max: ${NR_ENV_DET_FILTER_X_MAX}
+    y_min: ${NR_ENV_DET_FILTER_Y_MIN}
+    y_max: ${NR_ENV_DET_FILTER_Y_MAX}
+    z_min: ${NR_ENV_DET_FILTER_Z_MIN}
+    z_max: ${NR_ENV_DET_FILTER_Z_MAX}
+    range_min: ${NR_ENV_DET_FILTER_RANGE_MIN}   # small (0.3): people next to the robot matter most
+    range_max: ${NR_ENV_DET_FILTER_RANGE_MAX}
+
+env_det_avoid:
+  type: 'mbf_tag_nav_gridmap/PointCloudLayer'
+  input_topic: "/perception/env_det/avoid_points"
+  decay_time: ${NR_ENV_DET_DECAY_TIME}
+  filter:
+    frame: "base_footprint"
+    x_min: ${NR_ENV_DET_FILTER_X_MIN}
+    x_max: ${NR_ENV_DET_FILTER_X_MAX}
+    y_min: ${NR_ENV_DET_FILTER_Y_MIN}
+    y_max: ${NR_ENV_DET_FILTER_Y_MAX}
+    z_min: ${NR_ENV_DET_FILTER_Z_MIN}
+    z_max: ${NR_ENV_DET_FILTER_Z_MAX}
+    range_min: ${NR_ENV_DET_FILTER_RANGE_MIN}
+    range_max: ${NR_ENV_DET_FILTER_RANGE_MAX}
+
+# Matching nr_config.yaml entries (same format as the stack's other NR_* variables), e.g.:
+#
+# NR_ENV_DET_DECAY_TIME:
+#   type: float
+#   default: 1.0
+#   description: "Seconds after which a cell of the env_det layers is cleared once nothing of the
+#     layer's classes is detected in it any more."
+# NR_ENV_DET_FILTER_RANGE_MIN:
+#   type: float
+#   default: 0.3
+#   description: "Points of env_det's clouds closer than this to the lidar are ignored [m]."
+# ... (X/Y/Z_MIN/MAX, RANGE_MAX likewise)

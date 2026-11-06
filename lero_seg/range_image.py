@@ -44,21 +44,25 @@ def project(points: np.ndarray, layers_deg, width: int, tolerance_deg: float = 0
     return Projection(image, mask, row, col, index)
 
 
-def lidar_frames(recording: Path) -> list[dict]:
-    """The recording's scans that have per-point labels: [{frame, topic, frame_id, stamp_ns, robot_pose,
-    points, labels}]."""
+def lidar_frames(recording: Path, require_labels: bool = True) -> list[dict]:
+    """The recording's scans (by default only those with per-point labels): [{frame, topic, frame_id,
+    stamp_ns, robot_pose, points, labels}], labels None if unlabelled."""
     out = []
     for entry in read_jsonl(recording / 'lidar_index.jsonl'):
         points = recording / 'points' / f'{entry["frame"]}.npy'
         labels = recording / 'point_labels' / f'{entry["frame"]}.npy'
-        if points.is_file() and labels.is_file():
+        if points.is_file() and (labels.is_file() or not require_labels):
             out.append({'recording': recording, 'frame': entry['frame'], 'topic': entry.get('topic'),
                         'frame_id': entry.get('frame_id'), 'stamp_ns': entry.get('stamp_ns'),
-                        'robot_pose': entry.get('robot_pose'), 'points': points, 'labels': labels})
+                        'robot_pose': entry.get('robot_pose'), 'points': points,
+                        'labels': labels if labels.is_file() else None})
     return out
 
 
 def load_scan(item: dict, classes) -> tuple[np.ndarray, np.ndarray]:
-    """Points (N, 4) and their train ids (N,)."""
+    """Points (N, 4) and their train ids (N,), all ignore for an unlabelled scan."""
+    points = np.load(item['points'])
+    if item['labels'] is None:
+        return points, np.full(len(points), classes.ignore, dtype=np.uint8)
     lut = classes.lidar_lut(recorder_classes(item['recording']))
-    return np.load(item['points']), lut[np.load(item['labels']).reshape(-1).astype(np.int64)]
+    return points, lut[np.load(item['labels']).reshape(-1).astype(np.int64)]

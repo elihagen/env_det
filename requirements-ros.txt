@@ -1,0 +1,7 @@
+# The env_det node's Python dependencies on top of ROS 2 Jazzy (Dockerfile.ros; torch installed first).
+numpy
+pillow
+pyyaml
+scipy  # per-scan object ids (lero_seg/env_det.py)
+rfdetr==1.11.2  # inference only (no [train]); same version the checkpoints were trained with
+supervision>=0.29

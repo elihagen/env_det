@@ -1,0 +1,177 @@
+// Each configuration starts its script in the lero_seg container (tasks.json) under debugpy and
+// attaches to it on localhost:5678, so it works over Remote-SSH too. The SalsaNext/fusion ones load
+// data in the main process (--workers 0) so breakpoints in lero_seg/*_dataset.py hit.
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Train SalsaNext (from SemanticKITTI)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Train SalsaNext (from SemanticKITTI)"
+    },
+    {
+      "name": "Train SalsaNext (1 epoch smoke test)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Train SalsaNext (1 epoch smoke test)"
+    },
+    {
+      "name": "Infer SalsaNext (test split)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Infer SalsaNext (test split)"
+    },
+    {
+      "name": "Export COCO (SalsaNext's split)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Export COCO (SalsaNext's split)"
+    },
+    {
+      "name": "Train RF-DETR-Seg",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Train RF-DETR-Seg"
+    },
+    {
+      "name": "Train RF-DETR-Seg (1 epoch smoke test)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Train RF-DETR-Seg (1 epoch smoke test)"
+    },
+    {
+      "name": "Infer RF-DETR-Seg (test split)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Infer RF-DETR-Seg (test split)"
+    },
+    {
+      "name": "Late fusion (test split)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Late fusion (test split)"
+    },
+    {
+      "name": "Train fusion head (valid split)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true,
+      "preLaunchTask": "docker: Train fusion head (valid split)"
+    },
+    {
+      "name": "Attach to debug container (started by hand)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace/lero_sim_segmentation"
+        }
+      ],
+      "justMyCode": true
+    }
+  ]
+}

@@ -6,7 +6,8 @@
 
 One dataloader yields each scan with the camera frames nearest in time. The range image goes
 through SalsaNext, the frames through RF-DETR; both give class probabilities per point (see
-lero_seg/fusion.py), which are merged (configs/classes.yaml 'fusion', or --method/--*-weight).
+lero_seg/fusion.py), which are merged by a fixed rule (configs/classes.yaml 'fusion', or
+--method/--*-weight) or, with --head, by a fusion head trained with scripts/train_fusion.py.
 
 Writes <out>/<recording name>/<frame>.npy (fused train id per point, 255 = no sensor saw it;
 --save-probs adds <frame>_probs.npy), preview/ (camera frame with points by fused class | by
@@ -27,7 +28,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lero_seg.classes import DEFAULT_CONFIG, Classes  # noqa: E402
-from lero_seg.fusion import camera_point_probs, fuse, lidar_point_probs  # noqa: E402
+from lero_seg.fusion import camera_point_probs, fuse, learned_fuse, lidar_point_probs, load_head  # noqa: E402
 from lero_seg.fusion_dataset import FusionDataset, collate  # noqa: E402
 from lero_seg.metrics import Confusion  # noqa: E402
 from lero_seg.recordings import load_split  # noqa: E402
@@ -45,6 +46,22 @@ def weight(value):
 
 def predict(pred_probs, seen, ignore):
     return np.where(seen, pred_probs.argmax(1), ignore).astype(np.uint8)
+
+
+def scan_probs(batch, salsanext, detector, classes, threshold, device):
+    """Per scan of a FusionDataset batch: (index in batch, lidar probs (N, C), which points projected,
+    {camera name: (probs (N, C), visible (N,))})."""
+    lidar_probs = salsanext(batch['range_image'].to(device)).softmax(1).cpu().numpy()
+    # Both lidars' scans can pair with the same camera frame: detect each frame once.
+    frames = {(v['camera_dir'], v['frame']): v['rgb'] for views in batch['views'] for v in views}
+    detections = detector.predict([Image.fromarray(rgb) for rgb in frames.values()], threshold=threshold) \
+        if frames else []
+    detections = dict(zip(frames, detections if isinstance(detections, list) else [detections]))
+    for b in range(len(batch['labels'])):
+        p_lidar, lidar_valid = lidar_point_probs(lidar_probs[b], batch['row'][b], batch['col'][b])
+        cameras = {v['camera']: (camera_point_probs(detections[(v['camera_dir'], v['frame'])], v['uv'], v['visible'],
+                                                    classes), v['visible']) for v in batch['views'][b]}
+        yield b, p_lidar, lidar_valid, cameras
 
 
 def paint(rgb, uv, visible, classes_per_point, palette, radius=2):
@@ -71,6 +88,7 @@ def main():
     parser.add_argument('--method', choices=('product', 'mean'), help='default: from the config')
     parser.add_argument('--lidar-weight', type=weight, help='default: from the config')
     parser.add_argument('--camera-weight', type=weight, help='default: from the config')
+    parser.add_argument('--head', type=Path, help='fusion head from train_fusion.py (best.pt); replaces --method')
     parser.add_argument('--threshold', type=float, default=0.1,
                         help='RF-DETR confidence threshold; low, as confidences are fused, not cut')
     parser.add_argument('--batch-size', type=int, default=4)
@@ -97,6 +115,9 @@ def main():
     salsanext.load_state_dict(checkpoint['model'])
     salsanext.to(args.device).eval()
     detector = getattr(rfdetr, SIZES[args.rfdetr_size])(pretrain_weights=args.rfdetr)
+    head = load_head(args.head, args.device) if args.head else None
+    if head is not None:
+        method = 'learned'
 
     dataset = FusionDataset(recordings, classes, checkpoint['stats'], fusion_cfg, args.cameras)
     loader = DataLoader(dataset, args.batch_size, num_workers=args.workers, collate_fn=collate)
@@ -105,18 +126,14 @@ def main():
     n_scan = 0
     with torch.no_grad():
         for batch in tqdm(loader):
-            lidar_probs = salsanext(batch['range_image'].to(args.device)).softmax(1).cpu().numpy()
-            # Both lidars' scans can pair with the same camera frame: detect each frame once.
-            frames = {(v['camera_dir'], v['frame']): v['rgb'] for views in batch['views'] for v in views}
-            detections = detector.predict([Image.fromarray(rgb) for rgb in frames.values()], threshold=args.threshold) \
-                if frames else []
-            detections = dict(zip(frames, detections if isinstance(detections, list) else [detections]))
-
-            for b, labels in enumerate(batch['labels']):
-                p_lidar, lidar_valid = lidar_point_probs(lidar_probs[b], batch['row'][b], batch['col'][b])
-                views = [(camera_point_probs(detections[(v['camera_dir'], v['frame'])], v['uv'], v['visible'], classes),
-                          v['visible']) for v in batch['views'][b]]
-                p_fused, seen = fuse(p_lidar, lidar_valid, views, method, lidar_weight, camera_weight)
+            for b, p_lidar, lidar_valid, cameras in scan_probs(batch, salsanext, detector, classes, args.threshold,
+                                                               args.device):
+                labels = batch['labels'][b]
+                views = list(cameras.values())
+                if head is not None:
+                    p_fused, seen = learned_fuse(head, p_lidar, lidar_valid, cameras, batch['points'][b])
+                else:
+                    p_fused, seen = fuse(p_lidar, lidar_valid, views, method, lidar_weight, camera_weight)
                 p_camera, camera_seen = fuse(p_lidar, np.zeros_like(lidar_valid), views, 'product')
                 in_view = np.zeros_like(seen) if not views else np.logical_or.reduce([v for _, v in views])
 
@@ -142,6 +159,7 @@ def main():
                 n_scan += 1
 
     report = {'salsanext': str(args.salsanext), 'rfdetr': args.rfdetr, 'scans': len(dataset), 'method': method,
+              'head': str(args.head) if args.head else None,
               'lidar_weight': np.asarray(lidar_weight).tolist(), 'camera_weight': np.asarray(camera_weight).tolist(),
               'threshold': args.threshold, **{name: c.report(classes.names) for name, c in scores.items()}}
     with open(out / 'metrics.json', 'w') as f:

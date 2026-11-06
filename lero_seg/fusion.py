@@ -5,8 +5,13 @@ instance masks with a confidence each; a point's camera score for a class is the
 confidence among that class's masks covering its pixel. The scores become a distribution that
 keeps (1 - best score) spread over all classes, so a point no mask covers carries no camera
 evidence. Points the camera doesn't see (outside the image or occluded) keep the lidar's.
+
+The probabilities are merged either by a fixed rule (fuse: 'product' or 'mean') or by a trained
+FusionHead (learned_fuse; trained by scripts/train_fusion.py).
 """
 import numpy as np
+import torch
+from torch import nn
 
 EPS = 1e-6
 
@@ -70,3 +75,79 @@ def fuse(lidar_probs, lidar_valid, camera_views, method='product', lidar_weight=
     total = fused.sum(1, keepdims=True)
     uniform = np.full_like(fused, 1.0 / fused.shape[1])
     return np.divide(fused, total, out=uniform, where=total > 0), seen
+
+
+# Point geometry fed to the FusionHead: (range, z) in the lidar frame, divided by these [m].
+GEOMETRY_SCALE = (20.0, 5.0)
+
+
+def point_geometry(points: np.ndarray) -> np.ndarray:
+    xyz = np.asarray(points, dtype=np.float32)[:, :3]
+    return np.stack([np.linalg.norm(xyz, axis=1) / GEOMETRY_SCALE[0], xyz[:, 2] / GEOMETRY_SCALE[1]], 1)
+
+
+def stack_sources(lidar_probs, lidar_valid, cameras: dict, camera_order) -> tuple[np.ndarray, np.ndarray]:
+    """(N, S, C) probabilities and (N, S) validity of the S = 1 + len(camera_order) sources (lidar
+    first, then the cameras in camera_order). cameras: {name: (probs (N, C), visible (N,))}; a camera
+    that is missing (or not in camera_order) counts as not seeing any point."""
+    n, c = lidar_probs.shape
+    probs = np.full((n, 1 + len(camera_order), c), 1.0 / c, dtype=np.float32)
+    valid = np.zeros((n, 1 + len(camera_order)), dtype=bool)
+    probs[:, 0], valid[:, 0] = lidar_probs, lidar_valid
+    for i, name in enumerate(camera_order, 1):
+        if name in cameras:
+            probs[:, i], valid[:, i] = cameras[name]
+    return probs, valid
+
+
+class FusionHead(nn.Module):
+    """Trained late fusion, per point: an MLP of `layers` linear layers over every source's
+    log-probabilities and validity (lidar, then each camera) plus the point's geometry, whose output
+    is added to the sources' summed log-probabilities. The last layer starts at zero, so an untrained
+    head equals the 'product' rule with weight 1; training learns the correction (per-class trust,
+    confidence calibration, class interactions between the sensors)."""
+
+    def __init__(self, num_classes: int, cameras, hidden: int = 64, layers: int = 3, geometry: bool = True):
+        super().__init__()
+        self.config = {'num_classes': num_classes, 'cameras': list(cameras), 'hidden': hidden, 'layers': layers,
+                       'geometry': geometry}
+        self.cameras, self.geometry = list(cameras), geometry
+        sources = 1 + len(self.cameras)
+        dims = [sources * (num_classes + 1) + (2 if geometry else 0)] + [hidden] * (layers - 1) + [num_classes]
+        modules = []
+        for i in range(layers):
+            modules.append(nn.Linear(dims[i], dims[i + 1]))
+            if i < layers - 1:
+                modules += [nn.LayerNorm(dims[i + 1]), nn.ReLU()]
+        self.mlp = nn.Sequential(*modules)
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+
+    def forward(self, probs, valid, geometry=None):
+        """Logits (N, C) from probs (N, S, C), valid (N, S) and geometry (N, 2)."""
+        valid = valid.float()
+        log_p = probs.float().clamp(EPS, 1.0).log() * valid[..., None]
+        features = [torch.cat([log_p, valid[..., None]], -1).flatten(1)]
+        if self.geometry:
+            features.append(geometry.float())
+        return log_p.sum(1) + self.mlp(torch.cat(features, 1))
+
+
+def load_head(path, device='cpu') -> FusionHead:
+    checkpoint = torch.load(path, map_location='cpu', weights_only=False)
+    head = FusionHead(**checkpoint['config'])
+    head.load_state_dict(checkpoint['model'])
+    return head.to(device).eval()
+
+
+@torch.no_grad()
+def learned_fuse(head: FusionHead, lidar_probs, lidar_valid, cameras: dict, points):
+    """Like fuse(), with a FusionHead. cameras: {name: (probs (N, C), visible (N,))}."""
+    probs, valid = stack_sources(lidar_probs, lidar_valid, cameras, head.cameras)
+    device = next(head.parameters()).device
+    logits = head(torch.from_numpy(probs).to(device), torch.from_numpy(valid).to(device),
+                  torch.from_numpy(point_geometry(points)).to(device))
+    fused = logits.softmax(1).cpu().numpy()
+    seen = valid.any(1)
+    fused[~seen] = 1.0 / fused.shape[1]
+    return fused, seen
